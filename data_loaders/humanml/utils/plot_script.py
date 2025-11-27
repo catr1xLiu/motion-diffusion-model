@@ -6,10 +6,26 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation, FFMpegFileWriter
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import mpl_toolkits.mplot3d.axes3d as p3
-# import cv2
 from textwrap import wrap
-from moviepy.editor import VideoClip
-from moviepy.video.io.bindings import mplfig_to_npimage
+from moviepy.video.VideoClip import VideoClip
+
+def mplfig_to_npimage(fig):
+    """
+    Convert a matplotlib figure to a numpy array (RGB) using modern API.
+    Compatible with Matplotlib 3.8+ and WSL2 headless environments.
+    """
+    # Force a draw
+    fig.canvas.draw()
+    
+    # Use the buffer_rgba interface which is safer than accessing the renderer directly
+    width, height = fig.canvas.get_width_height()
+    buf = fig.canvas.buffer_rgba()
+    
+    # Convert buffer to numpy array and reshape
+    image = np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 4)
+    
+    # Drop Alpha channel to get RGB
+    return image[:, :, :3]
 
 def list_cut_average(ll, intervals):
     if intervals == 1:
@@ -40,9 +56,7 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
         ax.set_xlim3d([-radius / 2, radius / 2])
         ax.set_ylim3d([0, radius])
         ax.set_zlim3d([-radius / 3., radius * 2 / 3.])
-        # print(title)
-        # fig.suptitle(title, fontsize=10)  # Using dynamic title instead
-        ax.grid(b=False)
+        ax.grid(False) # Modern syntax (b=False is deprecated)
 
     def plot_xzPlane(minx, maxx, miny, minz, maxz):
         ## Plot a plane XZ
@@ -56,11 +70,9 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
         xz_plane.set_facecolor((0.5, 0.5, 0.5, 0.5))
         ax.add_collection3d(xz_plane)
 
-    #         return ax
-
     # (seq_len, joints_num, 3)
     data = joints.copy().reshape(len(joints), -1, 3)
-
+    
     # preparation related to specific datasets
     if dataset == 'kit':
         data *= 0.003  # scale for visualization
@@ -71,7 +83,10 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
 
     fig = plt.figure(figsize=figsize)
     plt.tight_layout()
-    ax = p3.Axes3D(fig)
+    
+    # FIX 1: Use modern subplot initialization instead of p3.Axes3D(fig)
+    ax = fig.add_subplot(111, projection='3d')
+    
     init()
     MINS = data.min(axis=0).min(axis=0)
     MAXS = data.max(axis=0).max(axis=0)
@@ -85,7 +100,6 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
         colors = colors_blue
     
     n_frames = data.shape[0]
-    #     print(dataset.shape)
 
     height_offset = MINS[1]
     data[:, :, 1] -= height_offset
@@ -95,14 +109,19 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
     data[..., 0] -= data[:, 0:1, 0] 
     data[..., 2] -= data[:, 0:1, 2]
 
-    #     print(trajec.shape)
-
     def update(index):
         # sometimes index is equal to n_frames/fps due to floating point issues. in such case, we duplicate the last frame
         index = min(n_frames-1, int(index*fps))
+        
         ax.clear()
+        
+        # Reset axes limits and view after clear
+        ax.set_xlim3d([-radius / 2, radius / 2])
+        ax.set_ylim3d([0, radius])
+        ax.set_zlim3d([-radius / 3., radius * 2 / 3.])
+        
+        # FIX 2: Remove ax.dist (deprecated/removed in Matplotlib 3.8+)
         ax.view_init(elev=120, azim=-90)
-        ax.dist = 7.5
         
         # Dynamic title
         if title_per_frame:
@@ -116,14 +135,15 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
                      MAXS[2] - trajec[index, 1])
 
         used_colors = colors_blue if index in gt_frames else colors
+        
         for i, (chain, color) in enumerate(zip(kinematic_tree, used_colors)):
             if i < 5:
                 linewidth = 4.0
             else:
                 linewidth = 2.0
+            
             ax.plot3D(data[index, chain, 0], data[index, chain, 1], data[index, chain, 2], linewidth=linewidth,
                       color=color)
-        #         print(trajec[:index, 0].shape)
 
         plt.axis('off')
         ax.set_axis_off()
@@ -139,10 +159,9 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
         ax.set_yticks([])
         ax.set_zticks([])
 
-
         return mplfig_to_npimage(fig)
 
-    ani = VideoClip(update)
+    ani = VideoClip(update, duration=n_frames/fps)
     
     plt.close()
     return ani
