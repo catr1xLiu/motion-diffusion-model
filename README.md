@@ -123,11 +123,11 @@ for Zero-shot Motion Transfer
 
 ## Getting started
 
-This code was tested on `Ubuntu 18.04.5 LTS` and requires:
+This code was tested on `Ubuntu 24.04.3 LTS` (WSL2) and requires:
 
-* Python 3.7
+* Python 3.10
 * conda3 or miniconda3
-* CUDA capable GPU (one is enough)
+* CUDA capable GPU (RTX50 Series Supported)
 
 ### 1. Setup environment
 
@@ -143,8 +143,6 @@ Setup conda env:
 ```shell
 conda env create -f environment.yml
 conda activate mdm
-python -m spacy download en_core_web_sm
-pip install git+https://github.com/openai/CLIP.git
 ```
 
 Download dependencies:
